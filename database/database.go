@@ -23,7 +23,7 @@ func Generate(config *model.DbConfig) {
 		os.Exit(1)
 	}
 	defer db.Close()
-	dbInfo := getDbInfo(db)
+	var dbInfo model.DbInfo
 	dbInfo.DbName = config.Database
 	tables := getTableInfo(db)
 	// create
@@ -77,7 +77,7 @@ func getDbInfo(db *sql.DB) model.DbInfo {
 		key, value string
 	)
 	// 数据库版本
-	rows, err = db.Query("select @@version;")
+	rows, err = db.Query("SELECT @@version;")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -87,7 +87,7 @@ func getDbInfo(db *sql.DB) model.DbInfo {
 	}
 	info.Version = value
 	// 字符集
-	rows, err = db.Query("show variables like '%character_set_server%';")
+	rows, err = db.Query("SHOW variables LIKE '%character_set_server%';")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -97,7 +97,7 @@ func getDbInfo(db *sql.DB) model.DbInfo {
 	}
 	info.Charset = value
 	// 排序规则
-	rows, err = db.Query("show variables like 'collation_server%';")
+	rows, err = db.Query("SHOW variables LIKE 'collation_server%';")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -155,27 +155,27 @@ func getTableSQL() string {
 	var sql string
 	if dbConfig.DbType == 1 {
 		sql = fmt.Sprintf(`
-			select table_name    as TableName, 
-			       table_comment as TableComment
-			from information_schema.tables 
-			where table_schema = '%s'
+			SELECT table_name    AS TableName, 
+			       table_comment AS TableComment
+			FROM information_schema.tables 
+			WHERE table_schema = '%s'
 		`, dbConfig.Database)
 	}
 	if dbConfig.DbType == 2 {
 		sql = fmt.Sprintf(`
-		select * from (
-			select cast(so.name as varchar(500)) as TableName, 
-			cast(sep.value as varchar(500))      as TableComment
-			from sysobjects so
-			left JOIN sys.extended_properties sep on sep.major_id=so.id and sep.minor_id=0
-			where (xtype='U' or xtype='v')
+		SELECT * FROM (
+			SELECT CAST(so.name AS varchar(500)) AS TableName, 
+			CAST(sep.value AS varchar(500))      AS TableComment
+			FROM sysobjects so
+			LEFT JOIN sys.extended_properties sep ON sep.major_id=so.id AND sep.minor_id=0
+			WHERE (xtype='U' OR xtype='v')
 		) t 
 		`)
 	}
 	if dbConfig.DbType == 3 {
 		sql = fmt.Sprintf(`
-			SELECT a.relname     as TableName, 
-				   b.description as TableComment
+			SELECT a.relname     AS TableName, 
+				   b.description AS TableComment
 			FROM pg_class a
 			LEFT OUTER JOIN pg_description b ON b.objsubid = 0 AND a.oid = b.objoid
 			WHERE a.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
@@ -191,98 +191,98 @@ func getColumnSQL(tableName string) string {
 	var sql string
 	if dbConfig.DbType == 1 {
 		sql = fmt.Sprintf(`
-			select column_name as ColName,
-			column_type        as ColType,
-			column_key         as ColKey,
-			is_nullable        as IsNullable,
-			column_comment     as ColComment,
-			column_default     as ColDefault
-			from information_schema.columns 
-			where table_schema = '%s' and table_name = '%s' order by ordinal_position
+			SELECT column_name AS ColName,
+			column_type        AS ColType,
+			column_key         AS ColKey,
+			is_nullable        AS IsNullable,
+			column_comment     AS ColComment,
+			column_default     AS ColDefault
+			FROM information_schema.columns 
+			WHERE table_schema = '%s' AND table_name = '%s' ORDER BY ordinal_position
 		`, dbConfig.Database, tableName)
 	}
 	if dbConfig.DbType == 2 {
 		sql = fmt.Sprintf(`
 		SELECT 
 			ColName = a.name,
-			ColType = b.name + '(' + cast(COLUMNPROPERTY(a.id, a.name, 'PRECISION') as varchar) + ')',
-			ColKey  = case when exists(SELECT 1
+			ColType = b.name + '(' + CAST(COLUMNPROPERTY(a.id, a.name, 'PRECISION') AS varchar) + ')',
+			ColKey  = CASE WHEN EXISTS(SELECT 1
 										FROM sysobjects
-										where xtype = 'PK'
-										and name in (
+										WHERE xtype = 'PK'
+										AND name IN (
 											SELECT name
 											FROM sysindexes
-											WHERE indid in (
+											WHERE indid IN (
 												SELECT indid
 												FROM sysindexkeys
 												WHERE id = a.id AND colid = a.colid
-										))) then 'PRI'
-							else '' end,
-			IsNullable = case when a.isnullable = 1 then 'YES' else 'NO' end,
-			ColComment = isnull(g.[value], ''),
-			ColDefault = isnull(e.text, '')
+										))) THEN 'PRI'
+							ELSE '' END,
+			IsNullable = CASE WHEN a.isnullable = 1 THEN 'YES' ELSE 'NO' END,
+			ColComment = ISNULL(g.[VALUE], ''),
+			ColDefault = ISNULL(e.text, '')
 		FROM syscolumns a
-				left join systypes b on a.xusertype = b.xusertype
-				inner join sysobjects d on a.id = d.id and d.xtype = 'U' and d.name <> 'dtproperties'
-				left join syscomments e on a.cdefault = e.id
-				left join sys.extended_properties g on a.id = g.major_id and a.colid = g.minor_id
-				left join sys.extended_properties f on d.id = f.major_id and f.minor_id = 0
-		where d.name = '%s'
-		order by a.id, a.colorder
+				LEFT JOIN systypes b ON a.xusertype = b.xusertype
+				INNER JOIN sysobjects d ON a.id = d.id AND d.xtype = 'U' AND d.name <> 'dtproperties'
+				LEFT JOIN syscomments e ON a.cdefault = e.id
+				LEFT JOIN sys.extended_properties g ON a.id = g.major_id AND a.colid = g.minor_id
+				LEFT JOIN sys.extended_properties f ON d.id = f.major_id AND f.minor_id = 0
+		WHERE d.name = '%s'
+		ORDER BY a.id, a.colorder
 		`, tableName)
 	}
 	if dbConfig.DbType == 3 {
 		sql = fmt.Sprintf(`
-		select
-			column_name as ColName,
-			data_type as ColType,
-			case
-				when b.pk_name is null then ''
-				else 'PRI'
-			end as ColKey,
-			is_nullable as IsNullable,
-			c.DeText as ColComment,
-			column_default as ColDefault
-		from
+		SELECT
+			column_name AS ColName,
+			data_type AS ColType,
+			CASE
+				WHEN b.pk_name IS NULL THEN ''
+				ELSE 'PRI'
+			END AS ColKey,
+			is_nullable AS IsNullable,
+			c.DeText AS ColComment,
+			column_default AS ColDefault
+		FROM
 			information_schema.columns
-		left join (
-			select
-				pg_attr.attname as colname,
-				pg_constraint.conname as pk_name
-			from
+		LEFT JOIN (
+			SELECT
+				pg_attr.attname AS colname,
+				pg_constraint.conname AS pk_name
+			FROM
 				pg_constraint
-			inner join pg_class on
+			INNER JOIN pg_class ON
 				pg_constraint.conrelid = pg_class.oid
-			inner join pg_attribute pg_attr on
+			INNER JOIN pg_attribute pg_attr ON
 				pg_attr.attrelid = pg_class.oid
-				and pg_attr.attnum = pg_constraint.conkey[1]
-			inner join pg_type on
+				AND pg_attr.attnum = pg_constraint.conkey[1]
+			INNER JOIN pg_type ON
 				pg_type.oid = pg_attr.atttypid
-			where
+			WHERE
 				pg_class.relname = 'file_sources'
-				and pg_constraint.contype = 'p' ) b on
+				AND pg_constraint.contype = 'p' ) b ON
 			b.colname = information_schema.columns.column_name
-		left join (
-			select
+		LEFT JOIN (
+			SELECT
 				attname,
-				description as DeText
-			from
+				description AS DeText
+			FROM
 				pg_class
-			left join pg_attribute pg_attr on
+			LEFT JOIN pg_attribute pg_attr ON
 				pg_attr.attrelid = pg_class.oid
-			left join pg_description pg_desc on
+			LEFT JOIN pg_description pg_desc ON
 				pg_desc.objoid = pg_attr.attrelid
-				and pg_desc.objsubid = pg_attr.attnum
-			where
+				AND pg_desc.objsubid = pg_attr.attnum
+			WHERE
 				pg_attr.attnum>0
-				and pg_attr.attrelid = pg_class.oid
-				and pg_class.relname = 'file_sources' )c on
+				AND pg_attr.attrelid = pg_class.oid
+				AND pg_class.relname = 'file_sources' )c ON
 			c.attname = information_schema.columns.column_name
-		where
+		WHERE
 			table_schema = 'public'
-			and table_name = '%s'
-		order by
-			ordinal_position desc`, tableName)
+			AND table_name = '%s'
+		ORDER BY
+			ordinal_position DESC`, tableName)
 	}
 	return sql
 }

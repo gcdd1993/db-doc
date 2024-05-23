@@ -36,31 +36,14 @@ func main() {
 	dbConfig.Database = *databasePtr
 	dbConfig.DocType = *docTypePtr
 
+	fmt.Println(dbConfig)
+
 	// 检查DbType是否在有效范围内
 	if dbConfig.DbType < 1 || dbConfig.DbType > 3 {
 		fmt.Println("wrong number for --db-type, will exit ...")
 		os.Exit(1)
 	}
 
-	// 根据DbType设置默认端口和用户名
-	GetDefaultConfig()
-
 	// generate
 	database.Generate(&dbConfig)
-}
-
-// GetDefaultConfig get default config
-func GetDefaultConfig() {
-	// 根据DbType设置默认端口和用户名
-	switch dbConfig.DbType {
-	case 1:
-		dbConfig.Port = 3306
-		dbConfig.User = "root"
-	case 2:
-		dbConfig.Port = 1433
-		dbConfig.User = "sa"
-	case 3:
-		dbConfig.Port = 5432
-		dbConfig.User = "postgres"
-	}
 }
